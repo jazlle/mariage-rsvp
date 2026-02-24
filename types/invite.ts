@@ -5,7 +5,7 @@ export type InviteType =
 
 export interface Invite {
   id: string;
-  nom: string;
+  nom: {list: string[]};
   type: InviteType;
 
   token_hash: string;
