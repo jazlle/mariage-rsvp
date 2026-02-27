@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 import sha256 from "crypto-js/sha256";
 
@@ -10,10 +11,11 @@ interface Invite {
   id: number;
   nom: string | null;
   mairie: boolean | null;
-  chateau: boolean | null;
   cocktail: boolean | null;
+  chateau: boolean | null;
   brunch: boolean | null;
   fk_invitation: string;
+  autorisation_ia: boolean | null;
 }
 
 interface Invitation {
@@ -37,6 +39,7 @@ interface PageProps {
 
 export default function Page({ params }: PageProps) {
   const { token } = use(params);
+  const router = useRouter();
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -245,6 +248,55 @@ export default function Page({ params }: PageProps) {
             </div>
 
             <div className="space-y-16">
+              {/* Samedi 1er Août - Conditionnel */}
+              {(invitation.type === "full" ||
+                invitation.type === "partial-mairie") && (
+                <div>
+                  <h4
+                    className="text-2xl text-[#557C55] mb-10 text-center uppercase tracking-widest border-b border-[#557C55]/10 pb-4"
+                    style={{ fontFamily: "'Playfair Display', serif" }}
+                  >
+                    Samedi 01 Août
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-2 justify-center md:max-w-md md:mx-auto">
+                    <div className="text-center flex flex-col items-center group">
+                      <div
+                        className="mb-4 text-[#557C55] opacity-60 text-lg italic"
+                        style={{ fontFamily: "'Playfair Display', serif" }}
+                      >
+                        15:00
+                      </div>
+                      <div className="w-14 h-14 rounded-full bg-white border border-[#557C55]/20 flex items-center justify-center mb-4 shadow-sm group-hover:scale-110 transition-transform">
+                        <span className="text-[#557C55] text-2xl">💍</span>
+                      </div>
+                      <p
+                        className="text-lg leading-tight"
+                        style={{ fontFamily: "'Playfair Display', serif" }}
+                      >
+                        Mariage à la Mairie
+                      </p>
+                    </div>
+                    <div className="text-center flex flex-col items-center group">
+                      <div
+                        className="mb-4 text-[#557C55] opacity-60 text-lg italic"
+                        style={{ fontFamily: "'Playfair Display', serif" }}
+                      >
+                        16:30
+                      </div>
+                      <div className="w-14 h-14 rounded-full bg-white border border-[#557C55]/20 flex items-center justify-center mb-4 shadow-sm group-hover:scale-110 transition-transform">
+                        <span className="text-[#557C55] text-2xl">🍾</span>
+                      </div>
+                      <p
+                        className="text-lg leading-tight"
+                        style={{ fontFamily: "'Playfair Display', serif" }}
+                      >
+                        Cocktail à Gressy, Chez les parents de Dylan
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Samedi */}
               <div>
                 <h4
@@ -365,7 +417,7 @@ export default function Page({ params }: PageProps) {
                       className="text-lg leading-tight"
                       style={{ fontFamily: "'Playfair Display', serif" }}
                     >
-                      Brunch &amp; BBQ Party
+                      Brunch
                     </p>
                   </div>
                 </div>
@@ -373,13 +425,151 @@ export default function Page({ params }: PageProps) {
             </div>
           </section>
 
+          {/* Confirmation Table Samedi 01 Août */}
+          {(invitation.type === "full" ||
+            invitation.type === "partial-mairie") && (
+            <section className="bg-white/50 backdrop-blur-sm p-8 rounded-3xl border border-[#557C55]/20 shadow-sm">
+              <h3
+                className="text-3xl text-[#557C55] mb-8 text-center italic"
+                style={{ fontFamily: "'Dancing Script', cursive" }}
+              >
+                Samedi 01/08 - Je confirme ma présence
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-[#557C55]/10">
+                      <th
+                        className="pb-4 text-xl"
+                        style={{
+                          fontFamily: "'Playfair Display', serif",
+                          fontStyle: "italic",
+                        }}
+                      ></th>
+                      <th
+                        className="pb-4 text-xl text-center"
+                        style={{
+                          fontFamily: "'Playfair Display', serif",
+                          fontStyle: "italic",
+                        }}
+                      >
+                        Mairie
+                      </th>
+                      <th
+                        className="pb-4 text-xl text-center"
+                        style={{
+                          fontFamily: "'Playfair Display', serif",
+                          fontStyle: "italic",
+                        }}
+                      >
+                        Cocktail
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#557C55]/5">
+                    {invites.map((invite) => (
+                      <tr key={invite.id}>
+                        <td
+                          className="py-6"
+                          style={{ fontFamily: "'Playfair Display', serif" }}
+                        >
+                          {invite.nom ?? "Invité"}
+                        </td>
+                        <td className="py-6 text-center">
+                          <div className="flex items-center justify-center gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <span
+                                className="text-sm italic"
+                                style={{
+                                  fontFamily: "'Playfair Display', serif",
+                                }}
+                              >
+                                Oui
+                              </span>
+                              <input
+                                type="radio"
+                                checked={invite.mairie === true}
+                                onChange={() =>
+                                  updateInvite(invite.id, "mairie", true)
+                                }
+                                className="text-[#557C55] h-4 w-4"
+                              />
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <span
+                                className="text-sm italic"
+                                style={{
+                                  fontFamily: "'Playfair Display', serif",
+                                }}
+                              >
+                                Non
+                              </span>
+                              <input
+                                type="radio"
+                                checked={invite.mairie === false}
+                                onChange={() =>
+                                  updateInvite(invite.id, "mairie", false)
+                                }
+                                className="text-[#557C55] h-4 w-4"
+                              />
+                            </label>
+                          </div>
+                        </td>
+                        <td className="py-6 text-center">
+                          <div className="flex items-center justify-center gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <span
+                                className="text-sm italic"
+                                style={{
+                                  fontFamily: "'Playfair Display', serif",
+                                }}
+                              >
+                                Oui
+                              </span>
+                              <input
+                                type="radio"
+                                checked={invite.cocktail === true}
+                                onChange={() =>
+                                  updateInvite(invite.id, "cocktail", true)
+                                }
+                                className="text-[#557C55] h-4 w-4"
+                              />
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <span
+                                className="text-sm italic"
+                                style={{
+                                  fontFamily: "'Playfair Display', serif",
+                                }}
+                              >
+                                Non
+                              </span>
+                              <input
+                                type="radio"
+                                checked={invite.cocktail === false}
+                                onChange={() =>
+                                  updateInvite(invite.id, "cocktail", false)
+                                }
+                                className="text-[#557C55] h-4 w-4"
+                              />
+                            </label>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           {/* Confirmation Table */}
           <section className="bg-white/50 backdrop-blur-sm p-8 rounded-3xl border border-[#557C55]/20 shadow-sm">
             <h3
               className="text-3xl text-[#557C55] mb-8 text-center italic"
               style={{ fontFamily: "'Dancing Script', cursive" }}
             >
-              Je confirme ma présence
+              Week-end 08/08 - Je confirme ma présence
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
@@ -467,7 +657,7 @@ export default function Page({ params }: PageProps) {
                             className="text-sm italic"
                             style={{ fontFamily: "'Playfair Display', serif" }}
                           >
-                            BBQ Party
+                            Brunch
                           </span>
                           <input
                             type="checkbox"
@@ -584,7 +774,10 @@ export default function Page({ params }: PageProps) {
                       <input
                         type="radio"
                         checked={invitation.hebergement === false}
-                        onChange={() => updateInvitation("hebergement", false)}
+                        onChange={() => {
+                          updateInvitation("hebergement", false);
+                          updateInvitation("herbergement_nombre", null);
+                        }}
                         className="text-[#557C55]"
                       />
                       <span
@@ -596,28 +789,30 @@ export default function Page({ params }: PageProps) {
                     </label>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className="text-xl whitespace-nowrap italic"
-                    style={{ fontFamily: "'Playfair Display', serif" }}
-                  >
-                    Nombre de personnes :
-                  </span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={invites.length}
-                    value={invitation.herbergement_nombre ?? ""}
-                    onChange={(e) =>
-                      updateInvitation(
-                        "herbergement_nombre",
-                        e.target.value ? parseInt(e.target.value) : null,
-                      )
-                    }
-                    className="w-16 bg-transparent border-0 border-b border-[#557C55]/30 focus:ring-0 focus:border-[#557C55] px-0 text-center text-xl"
-                    style={{ fontFamily: "'Playfair Display', serif" }}
-                  />
-                </div>
+                {invitation.hebergement && (
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="text-xl whitespace-nowrap italic"
+                      style={{ fontFamily: "'Playfair Display', serif" }}
+                    >
+                      Nombre de personnes :
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={invites.length}
+                      value={invitation.herbergement_nombre ?? ""}
+                      onChange={(e) =>
+                        updateInvitation(
+                          "herbergement_nombre",
+                          e.target.value ? parseInt(e.target.value) : null,
+                        )
+                      }
+                      className="w-16 bg-transparent border-0 border-b border-[#557C55]/30 focus:ring-0 focus:border-[#557C55] px-0 text-center text-xl"
+                      style={{ fontFamily: "'Playfair Display', serif" }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </section>
@@ -680,6 +875,11 @@ export default function Page({ params }: PageProps) {
           >
             Lina &amp; Dylan
           </p>
+          <img
+            src="/puppy.svg"
+            alt="Puppy"
+            className="w-16 h-16 mx-auto mt-6"
+          />
         </footer>
       </div>
 
