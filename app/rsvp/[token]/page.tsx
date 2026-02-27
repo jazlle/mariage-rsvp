@@ -70,7 +70,9 @@ export default function Page({ params }: PageProps) {
       // 2. Fetch related invites
       const { data: inviteRows, error: invitesError } = await supabase
         .from("invites")
-        .select("id, nom, mairie, chateau, cocktail, brunch, fk_invitation")
+        .select(
+          "id, nom, mairie, chateau, cocktail, brunch, fk_invitation, autorisation_ia",
+        )
         .eq("fk_invitation", inv.id);
 
       if (invitesError) {
