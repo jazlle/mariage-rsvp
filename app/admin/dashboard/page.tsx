@@ -12,6 +12,8 @@ interface Invite {
   chateau: boolean | null;
   brunch: boolean | null;
   autorisation_ia: boolean | null;
+  regime: string | null;
+  allergie: string | null;
   fk_invitation: string;
 }
 
@@ -19,8 +21,6 @@ interface InvitationData {
   id: string;
   nom: string | null;
   type: string | null;
-  regime: string | null;
-  allergie: string | null;
   hebergement: boolean | null;
   herbergement_nombre: number | null;
   link_music: string | null;
@@ -72,7 +72,7 @@ export default function AdminDashboardPage() {
       const { data: invitationsData, error: invError } = await supabase
         .from("invitation")
         .select(
-          "id, nom, type, regime, allergie, hebergement, herbergement_nombre, link_music, confirmed_at, url",
+          "id, nom, type, hebergement, herbergement_nombre, link_music, confirmed_at, url",
         );
 
       if (invError) {
@@ -84,7 +84,7 @@ export default function AdminDashboardPage() {
       const { data: allInvitesData, error: invitesError } = await supabase
         .from("invites")
         .select(
-          "id, nom, mairie, cocktail, chateau, brunch, autorisation_ia, fk_invitation",
+          "id, nom, mairie, cocktail, chateau, brunch, autorisation_ia, regime, allergie, fk_invitation",
         );
 
       if (invitesError) {
@@ -119,7 +119,7 @@ export default function AdminDashboardPage() {
       const { data: invitesData, error: invitesError } = await supabase
         .from("invites")
         .select(
-          "id, nom, mairie, cocktail, chateau, brunch, autorisation_ia, fk_invitation",
+          "id, nom, mairie, cocktail, chateau, brunch, autorisation_ia, regime, allergie, fk_invitation",
         )
         .eq("fk_invitation", invitationId);
 
@@ -182,7 +182,10 @@ export default function AdminDashboardPage() {
       chateau: { accepted: 0, refused: 0, total: 0 },
       accommodation: 0,
       regimes: {} as {
-        [key: string]: { count: number; invitations: string[] };
+        [key: string]: {
+          count: number;
+          invites: { nom: string; invitationNom: string }[];
+        };
       },
     };
 
@@ -208,20 +211,23 @@ export default function AdminDashboardPage() {
           if (invite.chateau === true) stats.chateau.accepted += 1;
           if (invite.chateau === false) stats.chateau.refused += 1;
         }
+
+        // Collect regimes from invites
+        if (invite.regime && invite.regime.trim()) {
+          if (!stats.regimes[invite.regime]) {
+            stats.regimes[invite.regime] = { count: 0, invites: [] };
+          }
+          stats.regimes[invite.regime].count += 1;
+          stats.regimes[invite.regime].invites.push({
+            nom: invite.nom || "Invité",
+            invitationNom: inv.nom || "Invitation",
+          });
+        }
       });
 
       // Count accommodation
       if (inv.hebergement === true) {
         stats.accommodation += inv.herbergement_nombre || 0;
-      }
-
-      // Collect regimes
-      if (inv.regime && inv.regime.trim()) {
-        if (!stats.regimes[inv.regime]) {
-          stats.regimes[inv.regime] = { count: 0, invitations: [] };
-        }
-        stats.regimes[inv.regime].count += 1;
-        stats.regimes[inv.regime].invitations.push(inv.nom || "");
       }
     });
 
@@ -484,7 +490,12 @@ export default function AdminDashboardPage() {
                     >
                       <p className="font-semibold text-[#557C55]">{regime}</p>
                       <p className="text-sm text-slate-600">
-                        {data.invitations.join(", ")}
+                        {data.invites
+                          .map(
+                            (invite) =>
+                              `${invite.nom} (${invite.invitationNom})`,
+                          )
+                          .join(", ")}
                       </p>
                     </div>
                   ))
@@ -676,39 +687,6 @@ export default function AdminDashboardPage() {
                           </p>
                         </div>
                       </div>
-
-                      <div>
-                        <h3
-                          className="text-lg font-semibold text-[#557C55] mb-4"
-                          style={{ fontFamily: "'Playfair Display', serif" }}
-                        >
-                          Régime alimentaire
-                        </h3>
-                        <div className="space-y-2 text-sm">
-                          {invitationDetails?.regime && (
-                            <p>
-                              <strong className="text-[#557C55]">
-                                Régime :
-                              </strong>{" "}
-                              <span className="font-bold text-black">
-                                {invitationDetails?.regime}
-                              </span>
-                            </p>
-                          )}
-                          {invitationDetails?.allergie && (
-                            <p>
-                              <strong className="text-[#557C55]">
-                                Allergies :
-                              </strong>{" "}
-                              <span className="font-bold text-black">
-                                {invitationDetails?.allergie}
-                              </span>
-                            </p>
-                          )}
-                          {!invitationDetails?.allergie &&
-                            !invitationDetails?.regime && <strong>RAS</strong>}
-                        </div>
-                      </div>
                     </div>
 
                     {/* Invités */}
@@ -735,6 +713,10 @@ export default function AdminDashboardPage() {
                               </th>
                               <th className="px-4 py-2 text-center">Brunch</th>
                               <th className="px-4 py-2 text-center">IA</th>
+                              <th className="px-4 py-2 text-center">Régime</th>
+                              <th className="px-4 py-2 text-center">
+                                Allergie
+                              </th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[#557C55]/10">
@@ -771,6 +753,12 @@ export default function AdminDashboardPage() {
                                     : invite.autorisation_ia === false
                                       ? "✗"
                                       : "-"}
+                                </td>
+                                <td className="px-4 py-3 text-center text-xs">
+                                  {invite.regime ? invite.regime : "-"}
+                                </td>
+                                <td className="px-4 py-3 text-center text-xs">
+                                  {invite.allergie ? invite.allergie : "-"}
                                 </td>
                               </tr>
                             ))}

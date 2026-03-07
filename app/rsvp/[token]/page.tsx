@@ -16,14 +16,14 @@ interface Invite {
   brunch: boolean | null;
   fk_invitation: string;
   autorisation_ia: boolean | null;
+  regime: string | null;
+  allergie: string | null;
 }
 
 interface Invitation {
   id: string;
   nom: string | null;
   type: string | null;
-  regime: string | null;
-  allergie: string | null;
   hebergement: boolean | null;
   herbergement_nombre: number | null;
   link_music: string | null;
@@ -56,7 +56,7 @@ export default function Page({ params }: PageProps) {
       const { data: inv, error: invError } = await supabase
         .from("invitation")
         .select(
-          "id, nom, type, regime, allergie, hebergement, herbergement_nombre, link_music, confirmed_at",
+          "id, nom, type, hebergement, herbergement_nombre, link_music, confirmed_at",
         )
         .eq("token_hash", hash)
         .single();
@@ -77,7 +77,7 @@ export default function Page({ params }: PageProps) {
       const { data: inviteRows, error: invitesError } = await supabase
         .from("invites")
         .select(
-          "id, nom, mairie, cocktail, chateau, brunch, fk_invitation, autorisation_ia",
+          "id, nom, mairie, cocktail, chateau, brunch, fk_invitation, autorisation_ia, regime, allergie",
         )
         .eq("fk_invitation", inv.id);
 
@@ -97,7 +97,7 @@ export default function Page({ params }: PageProps) {
   const updateInvite = (
     id: number,
     field: keyof Invite,
-    value: boolean | null,
+    value: boolean | string | null,
   ) => {
     setInvites((prev) =>
       prev.map((inv) => (inv.id === id ? { ...inv, [field]: value } : inv)),
@@ -145,9 +145,9 @@ export default function Page({ params }: PageProps) {
       }
     }
 
-    // Vérifier IA authorization
+    // Vérifier IA authorization - uniquement pour les invités qui vont au château
     for (const invite of invites) {
-      if (invite.autorisation_ia === null) {
+      if (invite.chateau === true && invite.autorisation_ia === null) {
         alert(
           `Veuillez répondre à la question sur l'IA pour ${invite.nom || "l'invité"}`,
         );
@@ -155,8 +155,9 @@ export default function Page({ params }: PageProps) {
       }
     }
 
-    // Vérifier hébergement
-    if (invitation?.hebergement === null) {
+    // Vérifier hébergement - seulement si au moins un invité va au château
+    const hasChateauGuest = invites.some((invite) => invite.chateau === true);
+    if (hasChateauGuest && invitation?.hebergement === null) {
       alert("Veuillez confirmer si vous dormez au château");
       return false;
     }
@@ -184,23 +185,49 @@ export default function Page({ params }: PageProps) {
 
     setLoading(true);
     try {
+      // Vérifier s'il y a au moins un invité au château
+      const hasChateauGuest = invites.some((invite) => invite.chateau === true);
+
+      // Préparer les données nettoyées pour les invites
+      const cleanedInvites = invites.map((invite) => {
+        const hasConfirmed =
+          invite.cocktail === true || invite.chateau === true;
+        const cleaned = { ...invite };
+
+        // Si l'invité n'a confirmé ni cocktail ni château, supprimer regime et allergie
+        if (!hasConfirmed) {
+          cleaned.regime = null;
+          cleaned.allergie = null;
+        }
+
+        return cleaned;
+      });
+
+      // Préparer les données de l'invitation
+      let invitationData: any = {
+        hebergement: invitation.hebergement,
+        herbergement_nombre: invitation.herbergement_nombre,
+        link_music: invitation.link_music,
+        confirmed_at: new Date().toISOString(),
+      };
+
+      // Si aucun invité n'a confirmé le château
+      if (!hasChateauGuest) {
+        invitationData.link_music = null;
+        invitationData.hebergement = false;
+        invitationData.herbergement_nombre = 0;
+      }
+
       // Update invitation
       const { error: invError } = await supabase
         .from("invitation")
-        .update({
-          regime: invitation.regime,
-          allergie: invitation.allergie,
-          hebergement: invitation.hebergement,
-          herbergement_nombre: invitation.herbergement_nombre,
-          link_music: invitation.link_music,
-          confirmed_at: new Date().toISOString(),
-        })
+        .update(invitationData)
         .eq("id", invitation.id);
 
       if (invError) throw invError;
 
       // Update invites
-      for (const invite of invites) {
+      for (const invite of cleanedInvites) {
         const { error: updateError } = await supabase
           .from("invites")
           .update({
@@ -209,6 +236,8 @@ export default function Page({ params }: PageProps) {
             chateau: invite.chateau,
             brunch: invite.brunch,
             autorisation_ia: invite.autorisation_ia,
+            regime: invite.regime,
+            allergie: invite.allergie,
           })
           .eq("id", invite.id);
 
@@ -361,6 +390,76 @@ export default function Page({ params }: PageProps) {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Adresses Samedi 01 */}
+                <div className="space-y-4 mt-4 pt-4 border-t border-[#557C55]/10">
+                  {invites.some((invite) => invite.mairie === true) && (
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm leading-relaxed text-slate-600 flex-1">
+                        📍 Mairie: Pl. de la Libération, 93160 Noisy-le-Grand
+                      </span>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <a
+                          href="https://waze.com/ul?q=Pl.%20de%20la%20Libert%C3%A9%2093160%20Noisy-le-Grand"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 bg-gradient-to-r from-blue-400 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all"
+                          title="Ouvrir dans Waze"
+                        >
+                          <img src="/waze.png" alt="Waze" className="w-4 h-4" />
+                          Waze
+                        </a>
+                        <a
+                          href="https://www.google.com/maps/dir/?api=1&destination=Pl.%20de%20la%20Libert%C3%A9%2093160%20Noisy-le-Grand"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all"
+                          title="Ouvrir dans Google Maps"
+                        >
+                          <img
+                            src="/maps-512.svg"
+                            alt="Maps"
+                            className="w-4 h-4"
+                          />
+                          Maps
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                  {invites.some((invite) => invite.cocktail === true) && (
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm leading-relaxed text-slate-600 flex-1">
+                        📍 Cocktail: 13 Allée Cérès, 77410 Gressy
+                      </span>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <a
+                          href="https://waze.com/ul?q=13%20All%C3%A9e%20C%C3%A9r%C3%A8s%2077410%20Gressy"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 bg-gradient-to-r from-blue-400 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all"
+                          title="Ouvrir dans Waze"
+                        >
+                          <img src="/waze.png" alt="Waze" className="w-4 h-4" />
+                          Waze
+                        </a>
+                        <a
+                          href="https://www.google.com/maps/dir/?api=1&destination=13%20All%C3%A9e%20C%C3%A9r%C3%A8s%2077410%20Gressy"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all"
+                          title="Ouvrir dans Google Maps"
+                        >
+                          <img
+                            src="/maps-512.svg"
+                            alt="Maps"
+                            className="w-4 h-4"
+                          />
+                          Maps
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -435,100 +534,162 @@ export default function Page({ params }: PageProps) {
                   </tbody>
                 </table>
               </div>
-            </div>
 
-            {/* Hébergement */}
-            <div className="bg-[#557C55]/5 p-4 rounded-lg">
-              <p
-                className="text-lg italic mb-2"
-                style={{ fontFamily: "'Playfair Display', serif" }}
-              >
-                <strong>Hébergement :</strong>{" "}
-                {invitation.hebergement === true ? (
-                  <span className="inline-block bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full text-xs border border-green-500">
-                    ✓ Oui
+              {/* Adresse Château */}
+              {invites.some(
+                (invite) => invite.chateau === true || invite.brunch === true,
+              ) && (
+                <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-[#557C55]/10">
+                  <span className="text-sm leading-relaxed text-slate-600 flex-1">
+                    📍 Château: 17 Rue de Bois Eluis, 77320 Dagny
                   </span>
-                ) : (
-                  <span className="inline-block bg-red-100 text-red-800 font-bold px-3 py-1 rounded-full text-xs border border-red-500">
-                    ✗ Non
-                  </span>
-                )}
-              </p>
-              {invitation.hebergement === true && (
-                <p
-                  className="text-lg italic"
-                  style={{ fontFamily: "'Playfair Display', serif" }}
-                >
-                  <strong>Nombre de personnes :</strong>{" "}
-                  {invitation.herbergement_nombre}
-                </p>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <a
+                      href="https://waze.com/ul?q=17%20Rue%20de%20Bois%20Eluis%2077320%20Dagny"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 bg-gradient-to-r from-blue-400 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all"
+                      title="Ouvrir dans Waze"
+                    >
+                      <img src="/waze.png" alt="Waze" className="w-4 h-4" />
+                      Waze
+                    </a>
+                    <a
+                      href="https://www.google.com/maps/dir/?api=1&destination=17%20Rue%20de%20Bois%20Eluis%2077320%20Dagny"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all"
+                      title="Ouvrir dans Google Maps"
+                    >
+                      <img src="/maps-512.svg" alt="Maps" className="w-4 h-4" />
+                      Maps
+                    </a>
+                  </div>
+                </div>
               )}
             </div>
 
-            {/* Régime et Allergies */}
-            {(invitation.regime || invitation.allergie) && (
-              <div className="bg-[#557C55]/5 p-4 rounded-lg space-y-2">
-                {invitation.regime && (
+            {/* Hébergement */}
+            {invites.some((invite) => invite.chateau === true) && (
+              <div className="bg-[#557C55]/5 p-4 rounded-lg">
+                <p
+                  className="text-lg italic mb-2"
+                  style={{ fontFamily: "'Playfair Display', serif" }}
+                >
+                  <strong>Hébergement :</strong>{" "}
+                  {invitation.hebergement === true ? (
+                    <span className="inline-block bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full text-xs border border-green-500">
+                      ✓ Oui
+                    </span>
+                  ) : (
+                    <span className="inline-block bg-red-100 text-red-800 font-bold px-3 py-1 rounded-full text-xs border border-red-500">
+                      ✗ Non
+                    </span>
+                  )}
+                </p>
+                {invitation.hebergement === true && (
                   <p
                     className="text-lg italic"
                     style={{ fontFamily: "'Playfair Display', serif" }}
                   >
-                    <strong>Régime alimentaire :</strong> {invitation.regime}
-                  </p>
-                )}
-                {invitation.allergie && (
-                  <p
-                    className="text-lg italic"
-                    style={{ fontFamily: "'Playfair Display', serif" }}
-                  >
-                    <strong>Allergies :</strong> {invitation.allergie}
+                    <strong>Nombre de personnes :</strong>{" "}
+                    {invitation.herbergement_nombre}
                   </p>
                 )}
               </div>
             )}
 
             {/* Autorisations IA */}
-            <div className="space-y-3">
-              <h4
-                className="text-lg italic text-[#557C55]"
-                style={{ fontFamily: "'Playfair Display', serif" }}
-              >
-                <strong>Autorisations IA :</strong>
-              </h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <tbody className="divide-y divide-[#557C55]/5">
-                    {invites.map((invite) => (
-                      <tr key={invite.id}>
-                        <td className="py-3 px-2">
+            {invites.some((invite) => invite.chateau === true) && (
+              <div className="space-y-3">
+                <h4
+                  className="text-lg italic text-[#557C55]"
+                  style={{ fontFamily: "'Playfair Display', serif" }}
+                >
+                  <strong>Autorisations IA :</strong>
+                </h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <tbody className="divide-y divide-[#557C55]/5">
+                      {invites.map(
+                        (invite) =>
+                          invite.chateau === true && (
+                            <tr key={invite.id}>
+                              <td className="py-3 px-2">
+                                <p
+                                  style={{
+                                    fontFamily: "'Playfair Display', serif",
+                                  }}
+                                >
+                                  {invite.nom}
+                                </p>
+                              </td>
+                              <td className="py-3 px-2">
+                                {invite.autorisation_ia === true ? (
+                                  <span className="inline-block bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full text-xs border border-green-500">
+                                    ✓ Oui
+                                  </span>
+                                ) : (
+                                  <span className="inline-block bg-red-100 text-red-800 font-bold px-3 py-1 rounded-full text-xs border border-red-500">
+                                    ✗ Non
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Régimes alimentaires */}
+            {invites.some(
+              (inv) =>
+                (inv.regime || inv.allergie) &&
+                (inv.cocktail === true || inv.chateau === true),
+            ) && (
+              <div className="space-y-4">
+                <h4
+                  className="text-2xl text-[#557C55] underline italic"
+                  style={{ fontFamily: "'Playfair Display', serif" }}
+                >
+                  Régimes & Allergies
+                </h4>
+                <div className="space-y-3">
+                  {invites.map(
+                    (invite) =>
+                      (invite.regime || invite.allergie) &&
+                      (invite.cocktail === true || invite.chateau === true) && (
+                        <div
+                          key={invite.id}
+                          className="bg-white/30 p-4 rounded-lg"
+                        >
                           <p
-                            style={{
-                              fontFamily: "'Playfair Display', serif",
-                            }}
+                            className="font-semibold text-[#557C55]"
+                            style={{ fontFamily: "'Playfair Display', serif" }}
                           >
                             {invite.nom}
                           </p>
-                        </td>
-                        <td className="py-3 px-2">
-                          {invite.autorisation_ia === true ? (
-                            <span className="inline-block bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full text-xs border border-green-500">
-                              ✓ Oui
-                            </span>
-                          ) : (
-                            <span className="inline-block bg-red-100 text-red-800 font-bold px-3 py-1 rounded-full text-xs border border-red-500">
-                              ✗ Non
-                            </span>
+                          {invite.regime && (
+                            <p className="text-sm text-slate-600">
+                              <strong>Régime :</strong> {invite.regime}
+                            </p>
                           )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          {invite.allergie && (
+                            <p className="text-sm text-slate-600">
+                              <strong>Allergie :</strong> {invite.allergie}
+                            </p>
+                          )}
+                        </div>
+                      ),
+                  )}
+                </div>
               </div>
-            </div>
-
-            {/* Musique */}
-            {invitation.link_music && (
+            )}
+            {/* Chansons proposées */}
+            {invites.some((invite) => invite.chateau === true) && (
               <div className="bg-[#557C55]/5 p-4 rounded-lg">
                 <p
                   className="text-lg italic mb-2"
@@ -592,7 +753,7 @@ export default function Page({ params }: PageProps) {
             <img
               alt="Château Bois Eluis"
               className="w-full max-h-80 object-cover rounded-2xl shadow-xl opacity-90"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDfDw5ppENS0ZXrTydOGqljgglhjbEtIZQRxOw7lpnCw1DpnQiuZitU4cNeMp5_oQa1muselJaT-XwcelcWIjegwEFh_AP5maD7GCR-nVWEZth6qjNdcHtzjMONkErzaXUXNqfuLsuyT8-M_k1kZkB0Cjdf6I-C_mdP99vU-GgIC5Qj8Epu-3mYywx6gDI924pSEhiHiWgW-7irJNQyhRYktqy_S7wCkl25J9ULsgs0wNQwsNx9j9RRcJ5-jp3qf4lbJ_iqdQmOX3s"
+              src="/DylanLina.png"
             />
             <div className="absolute inset-0 bg-[#557C55]/10 rounded-2xl"></div>
           </div>
@@ -608,18 +769,6 @@ export default function Page({ params }: PageProps) {
           >
             Lina &amp; Dylan
           </h1>
-          <p
-            className="text-2xl mt-6 text-slate-600 italic"
-            style={{ fontFamily: "'Playfair Display', serif" }}
-          >
-            Château Bois Eluis
-          </p>
-          <p
-            className="text-xl tracking-widest uppercase"
-            style={{ fontFamily: "'Playfair Display', serif" }}
-          >
-            Samedi 08 août 2026
-          </p>
           <div className="w-24 h-px bg-[#557C55]/30 mx-auto mt-8"></div>
         </header>
 
@@ -660,7 +809,7 @@ export default function Page({ params }: PageProps) {
                     className="text-2xl text-[#557C55] mb-10 text-center uppercase tracking-widest border-b border-[#557C55]/10 pb-4"
                     style={{ fontFamily: "'Playfair Display', serif" }}
                   >
-                    Samedi 01 Août
+                    Samedi 01 Août 2026
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-2 justify-center md:max-w-md md:mx-auto">
                     <div className="text-center flex flex-col items-center group">
@@ -677,7 +826,10 @@ export default function Page({ params }: PageProps) {
                         className="text-lg leading-tight"
                         style={{ fontFamily: "'Playfair Display', serif" }}
                       >
-                        Mariage à la Mairie
+                        Mariage à la Mairie de Noisy-le-Grand
+                      </p>
+                      <p className="text-sm text-slate-600 mt-2">
+                        📍 Pl. de la Libération, 93160 Noisy-le-Grand
                       </p>
                     </div>
                     <div className="text-center flex flex-col items-center group">
@@ -696,6 +848,9 @@ export default function Page({ params }: PageProps) {
                       >
                         Cocktail à Gressy, Chez les parents de Dylan
                       </p>
+                      <p className="text-sm text-slate-600 mt-2">
+                        📍 13 Allée Cérès, 77410 Gressy
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -703,12 +858,17 @@ export default function Page({ params }: PageProps) {
 
               {/* Samedi */}
               <div>
-                <h4
-                  className="text-2xl text-[#557C55] mb-10 text-center uppercase tracking-widest border-b border-[#557C55]/10 pb-4"
-                  style={{ fontFamily: "'Playfair Display', serif" }}
-                >
-                  Samedi 08 Août
-                </h4>
+                <div className="text-center mb-8">
+                  <h4
+                    className="text-2xl text-[#557C55] uppercase tracking-widest border-b border-[#557C55]/10 pb-4"
+                    style={{ fontFamily: "'Playfair Display', serif" }}
+                  >
+                    Samedi 08 Août 2026
+                  </h4>
+                  <p className="text-sm text-slate-600 mt-3">
+                    📍 17 Rue de Bois Eluis, 77320 Dagny
+                  </p>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 md:gap-2">
                   <div className="text-center flex flex-col items-center group">
                     <div
@@ -758,7 +918,7 @@ export default function Page({ params }: PageProps) {
                       className="text-lg leading-tight"
                       style={{ fontFamily: "'Playfair Display', serif" }}
                     >
-                      Cocktail &amp; Rafraîchissements
+                      Rafraîchissements &amp; Vin d'Honneur
                     </p>
                   </div>
                   <div className="text-center flex flex-col items-center group">
@@ -800,12 +960,17 @@ export default function Page({ params }: PageProps) {
 
               {/* Dimanche */}
               <div>
-                <h4
-                  className="text-2xl text-[#557C55] mb-10 text-center uppercase tracking-widest border-b border-[#557C55]/10 pb-4"
-                  style={{ fontFamily: "'Playfair Display', serif" }}
-                >
-                  Dimanche 09 Août
-                </h4>
+                <div className="text-center mb-8">
+                  <h4
+                    className="text-2xl text-[#557C55] uppercase tracking-widest border-b border-[#557C55]/10 pb-4"
+                    style={{ fontFamily: "'Playfair Display', serif" }}
+                  >
+                    Dimanche 09 Août 2026
+                  </h4>
+                  <p className="text-sm text-slate-600 mt-3">
+                    📍 17 Rue de Bois Eluis, 77320 Dagny
+                  </p>
+                </div>
                 <div className="flex justify-center">
                   <div className="text-center flex flex-col items-center group">
                     <div
@@ -1075,7 +1240,8 @@ export default function Page({ params }: PageProps) {
                                 invite.brunch === true ? false : true,
                               )
                             }
-                            className="rounded text-[#557C55] h-5 w-5 border-[#557C55]/30"
+                            disabled={invite.chateau === false}
+                            className="rounded text-[#557C55] h-5 w-5 border-[#557C55]/30 disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                         </label>
                       </td>
@@ -1087,289 +1253,353 @@ export default function Page({ params }: PageProps) {
           </section>
 
           {/* Dietary Section */}
-          <section className="space-y-6">
-            <div className="text-center mb-8">
-              <h3
-                className="text-4xl text-[#557C55] mb-2 italic"
-                style={{ fontFamily: "'Dancing Script', cursive" }}
-              >
-                Mariage gourmand pour tous !
-              </h3>
-              <p
-                className="text-sm tracking-widest font-semibold opacity-80 uppercase"
-                style={{ fontFamily: "'Montserrat', sans-serif" }}
-              >
-                N&apos;hésitez pas à nous indiquer si vous avez des restrictions
-                alimentaires :)
-              </p>
-            </div>
-            <div className="space-y-6">
-              <div>
-                <label
-                  className="block italic text-lg mb-2"
-                  style={{ fontFamily: "'Playfair Display', serif" }}
+          {invites.some(
+            (invite) => invite.chateau === true || invite.cocktail === true,
+          ) && (
+            <section className="space-y-6">
+              <div className="text-center mb-8">
+                <h3
+                  className="text-4xl text-[#557C55] mb-2 italic"
+                  style={{ fontFamily: "'Dancing Script', cursive" }}
                 >
-                  Régime alimentaire :
-                </label>
-                <input
-                  type="text"
-                  value={invitation.regime ?? ""}
-                  onChange={(e) => updateInvitation("regime", e.target.value)}
-                  placeholder="Ex: Végétarien / sans lactose / sans gluten"
-                  className="w-full bg-transparent border-0 border-b border-[#557C55]/30 focus:ring-0 focus:border-[#557C55] px-0"
-                />
-              </div>
-              <div>
-                <label
-                  className="block italic text-lg mb-2"
-                  style={{ fontFamily: "'Playfair Display', serif" }}
+                  Mariage gourmand pour tous !
+                </h3>
+                <p
+                  className="text-sm tracking-widest font-semibold opacity-80 uppercase"
+                  style={{ fontFamily: "'Montserrat', sans-serif" }}
                 >
-                  Allergie à préciser :
-                </label>
-                <input
-                  type="text"
-                  value={invitation.allergie ?? ""}
-                  onChange={(e) => updateInvitation("allergie", e.target.value)}
-                  placeholder="Ex: arachides, fruits de mer..."
-                  className="w-full bg-transparent border-0 border-b border-[#557C55]/30 focus:ring-0 focus:border-[#557C55] px-0"
-                />
+                  Indiquez nous si vos restrictions alimentaires
+                </p>
               </div>
-            </div>
-          </section>
-
-          {/* Accommodation Section */}
-          <section className="space-y-6">
-            <h3
-              className="text-4xl text-[#557C55] italic text-center"
-              style={{ fontFamily: "'Dancing Script', cursive" }}
-            >
-              Hébergement
-              <span className="text-red-600"> *</span>
-            </h3>
-            <div className="bg-[#557C55]/5 p-8 rounded-3xl text-center border-2 border-dashed border-[#557C55]/20">
-              <p
-                className="text-sm tracking-widest font-semibold mb-6 max-w-lg mx-auto leading-relaxed uppercase"
-                style={{ fontFamily: "'Montserrat', sans-serif" }}
-              >
-                Il sera possible de dormir au château du vendredi au dimanche.
-                Une petite participation vous sera demandée :)
-              </p>
-              <div className="flex flex-col md:flex-row items-center justify-center gap-8">
-                <div className="flex items-center gap-6">
-                  <span
-                    className="text-xl italic"
-                    style={{ fontFamily: "'Playfair Display', serif" }}
-                  >
-                    Je dors au château :
-                  </span>
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        checked={invitation.hebergement === true}
-                        onChange={() => updateInvitation("hebergement", true)}
-                        className="text-[#557C55]"
-                      />
-                      <span
-                        className="italic"
-                        style={{ fontFamily: "'Playfair Display', serif" }}
+              <div className="space-y-8">
+                {invites.map(
+                  (invite, index) =>
+                    (invite.chateau === true || invite.cocktail === true) && (
+                      <div
+                        key={invite.id}
+                        className="bg-white/50 backdrop-blur-sm p-6 rounded-3xl border border-[#557C55]/20 shadow-sm"
                       >
-                        Oui
-                      </span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        checked={invitation.hebergement === false}
-                        onChange={() => {
-                          updateInvitation("hebergement", false);
-                          updateInvitation("herbergement_nombre", null);
-                        }}
-                        className="text-[#557C55]"
-                      />
-                      <span
-                        className="italic"
-                        style={{ fontFamily: "'Playfair Display', serif" }}
-                      >
-                        Non
-                      </span>
-                    </label>
-                  </div>
-                </div>
-                {invitation.hebergement && (
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="text-xl whitespace-nowrap italic"
-                      style={{ fontFamily: "'Playfair Display', serif" }}
-                    >
-                      Nombre de personnes :
-                      <span className="text-red-600"> *</span>
-                    </span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={invites.length}
-                      value={invitation.herbergement_nombre ?? ""}
-                      onChange={(e) =>
-                        updateInvitation(
-                          "herbergement_nombre",
-                          e.target.value ? parseInt(e.target.value) : null,
-                        )
-                      }
-                      className="w-16 bg-transparent border-0 border-b border-[#557C55]/30 focus:ring-0 focus:border-[#557C55] px-0 text-center text-xl"
-                      style={{ fontFamily: "'Playfair Display', serif" }}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-          </section>
-
-          {/* AI Authorization Section */}
-          <section className="space-y-6">
-            <h3
-              className="text-4xl text-[#557C55] italic text-center"
-              style={{ fontFamily: "'Dancing Script', cursive" }}
-            >
-              Génération d'images par IA
-              <span className="text-red-600"> *</span>
-            </h3>
-            <div className="bg-blue-50/50 p-8 rounded-3xl text-center border-2 border-blue-200/50">
-              <p
-                className="text-sm tracking-widest font-semibold mb-4 max-w-lg mx-auto leading-relaxed uppercase"
-                style={{ fontFamily: "'Montserrat', sans-serif" }}
-              >
-                Nous souhaitons générer des images créatives à partir de photos
-                en utilisant l&apos;IA Grok. Ces images seront à but privé et
-                seront uniquement partages entre nous.
-              </p>
-              <p
-                className="text-sm tracking-widest font-semibold mb-8 max-w-lg mx-auto leading-relaxed italic text-blue-700"
-                style={{ fontFamily: "'Montserrat', sans-serif" }}
-              >
-                ⚠️ Aucune obligation - Votre réponse est entièrement volontaire.
-                Vous pouvez refuser sans aucun problème.
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-blue-200">
-                      <th
-                        className="pb-4 text-xl"
-                        style={{
-                          fontFamily: "'Playfair Display', serif",
-                          fontStyle: "italic",
-                        }}
-                      ></th>
-                      <th
-                        className="pb-4 text-xl text-center"
-                        style={{
-                          fontFamily: "'Playfair Display', serif",
-                          fontStyle: "italic",
-                        }}
-                      >
-                        Autorisation
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-blue-100">
-                    {invites.map((invite) => (
-                      <tr key={invite.id}>
-                        <td
-                          className="py-6"
+                        <h4
+                          className="text-2xl text-[#557C55] mb-6 italic"
                           style={{ fontFamily: "'Playfair Display', serif" }}
                         >
-                          {invite.nom ?? "Invité"}
-                        </td>
-                        <td className="py-6 text-center">
-                          <div className="flex items-center justify-center gap-4">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <span
-                                className="text-sm italic"
-                                style={{
-                                  fontFamily: "'Playfair Display', serif",
-                                }}
-                              >
-                                Oui
-                              </span>
-                              <input
-                                type="radio"
-                                checked={invite.autorisation_ia === true}
-                                onChange={() =>
-                                  updateInvite(
-                                    invite.id,
-                                    "autorisation_ia",
-                                    true,
-                                  )
-                                }
-                                className="text-blue-500 h-4 w-4"
-                              />
+                          {invite.nom ?? `Invité ${index + 1}`}
+                        </h4>
+                        <div className="space-y-4">
+                          <div>
+                            <label
+                              className="block italic text-lg mb-2"
+                              style={{
+                                fontFamily: "'Playfair Display', serif",
+                              }}
+                            >
+                              Régime alimentaire :
                             </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <span
-                                className="text-sm italic"
-                                style={{
-                                  fontFamily: "'Playfair Display', serif",
-                                }}
-                              >
-                                Non
-                              </span>
-                              <input
-                                type="radio"
-                                checked={invite.autorisation_ia === false}
-                                onChange={() =>
-                                  updateInvite(
-                                    invite.id,
-                                    "autorisation_ia",
-                                    false,
-                                  )
-                                }
-                                className="text-blue-500 h-4 w-4"
-                              />
-                            </label>
+                            <input
+                              type="text"
+                              value={invite.regime ?? ""}
+                              onChange={(e) =>
+                                updateInvite(
+                                  invite.id,
+                                  "regime",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Ex: Végétarien / sans lactose / sans gluten"
+                              className="w-full bg-transparent border-0 border-b border-[#557C55]/30 focus:ring-0 focus:border-[#557C55] px-0"
+                            />
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          <div>
+                            <label
+                              className="block italic text-lg mb-2"
+                              style={{
+                                fontFamily: "'Playfair Display', serif",
+                              }}
+                            >
+                              Allergie à préciser :
+                            </label>
+                            <input
+                              type="text"
+                              value={invite.allergie ?? ""}
+                              onChange={(e) =>
+                                updateInvite(
+                                  invite.id,
+                                  "allergie",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Ex: arachides, fruits de mer..."
+                              className="w-full bg-transparent border-0 border-b border-[#557C55]/30 focus:ring-0 focus:border-[#557C55] px-0"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ),
+                )}
               </div>
-            </div>
-          </section>
+            </section>
+          )}
 
-          {/* Music Section */}
-          <section className="space-y-8 pb-12">
-            <div className="text-center">
+          {/* Accommodation Section */}
+          {invites.some((invite) => invite.chateau === true) && (
+            <section className="space-y-6">
               <h3
-                className="text-5xl text-[#557C55] mb-4 italic"
+                className="text-4xl text-[#557C55] italic text-center"
                 style={{ fontFamily: "'Dancing Script', cursive" }}
               >
-                Vamos a bailar !
+                Hébergement
+                <span className="text-red-600"> *</span>
               </h3>
-              <div className="flex justify-center items-center gap-4 text-[#557C55]">
-                <span className="text-2xl">♪</span>
-                <span className="text-3xl">🎵</span>
-                <span className="text-2xl">♪</span>
+              <div className="bg-[#557C55]/5 p-8 rounded-3xl text-center border-2 border-dashed border-[#557C55]/20">
+                <p
+                  className="text-sm tracking-widest font-semibold mb-6 max-w-lg mx-auto leading-relaxed uppercase"
+                  style={{ fontFamily: "'Montserrat', sans-serif" }}
+                >
+                  Il sera possible de dormir au château du samedi au dimanche.
+                  Une petite participation, autour de 30-40€ par personne, vous
+                  sera demandée :)
+                </p>
+                <div className="flex flex-col md:flex-row items-center justify-center gap-8">
+                  <div className="flex items-center gap-6">
+                    <span
+                      className="text-xl italic"
+                      style={{ fontFamily: "'Playfair Display', serif" }}
+                    >
+                      Je dors au château :
+                    </span>
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          checked={invitation.hebergement === true}
+                          onChange={() => updateInvitation("hebergement", true)}
+                          className="text-[#557C55]"
+                        />
+                        <span
+                          className="italic"
+                          style={{ fontFamily: "'Playfair Display', serif" }}
+                        >
+                          Oui
+                        </span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          checked={invitation.hebergement === false}
+                          onChange={() => {
+                            updateInvitation("hebergement", false);
+                            updateInvitation("herbergement_nombre", null);
+                          }}
+                          className="text-[#557C55]"
+                        />
+                        <span
+                          className="italic"
+                          style={{ fontFamily: "'Playfair Display', serif" }}
+                        >
+                          Non
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                  {invitation.hebergement && (
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="text-xl whitespace-nowrap italic"
+                        style={{ fontFamily: "'Playfair Display', serif" }}
+                      >
+                        Nombre de personnes :
+                        <span className="text-red-600"> *</span>
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={invites.length}
+                        value={invitation.herbergement_nombre ?? ""}
+                        onChange={(e) =>
+                          updateInvitation(
+                            "herbergement_nombre",
+                            e.target.value ? parseInt(e.target.value) : null,
+                          )
+                        }
+                        className="w-16 bg-transparent border-0 border-b border-[#557C55]/30 focus:ring-0 focus:border-[#557C55] px-0 text-center text-xl"
+                        style={{ fontFamily: "'Playfair Display', serif" }}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="bg-white/60 p-8 rounded-3xl border border-[#557C55]/20 shadow-inner">
-              <p
-                className="text-sm tracking-widest font-semibold text-center mb-6 leading-relaxed uppercase"
-                style={{ fontFamily: "'Montserrat', sans-serif" }}
+            </section>
+          )}
+
+          {/* AI Authorization Section */}
+          {invites.some((invite) => invite.chateau === true) && (
+            <section className="space-y-6">
+              <h3
+                className="text-4xl text-[#557C55] italic text-center"
+                style={{ fontFamily: "'Dancing Script', cursive" }}
               >
-                Parce-qu&apos;on aimerait danser avec vous, partage nous 2
-                chansons qui te feront danser
-              </p>
-              <textarea
-                value={invitation.link_music ?? ""}
-                onChange={(e) => updateInvitation("link_music", e.target.value)}
-                placeholder="Ex: Dancing Queen - ABBA, L'aventurier - Indochine..."
-                rows={4}
-                className="w-full bg-[#F9F6F0]/50 border-2 border-[#557C55]/10 rounded-2xl p-4 focus:ring-[#557C55] focus:border-[#557C55] placeholder:italic"
-                style={{ fontFamily: "'Playfair Display', serif" }}
-              />
-            </div>
-            <div className="flex justify-center pt-8">
+                Génération d'images par IA
+                <span className="text-red-600"> *</span>
+              </h3>
+              <div className="bg-blue-50/50 p-8 rounded-3xl text-center border-2 border-blue-200/50">
+                <p
+                  className="text-sm tracking-widest font-semibold mb-4 max-w-lg mx-auto leading-relaxed uppercase"
+                  style={{ fontFamily: "'Montserrat', sans-serif" }}
+                >
+                  Nous souhaitons générer des images créatives à partir de
+                  photos en utilisant l&apos;IA Grok. Ces images seront à but
+                  privé et seront uniquement partages entre nous.
+                </p>
+                <p
+                  className="text-sm tracking-widest font-semibold mb-8 max-w-lg mx-auto leading-relaxed italic text-blue-700"
+                  style={{ fontFamily: "'Montserrat', sans-serif" }}
+                >
+                  ⚠️ Aucune obligation - Votre réponse est entièrement
+                  volontaire. Vous pouvez refuser sans aucun problème.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-blue-200">
+                        <th
+                          className="pb-4 text-xl"
+                          style={{
+                            fontFamily: "'Playfair Display', serif",
+                            fontStyle: "italic",
+                          }}
+                        ></th>
+                        <th
+                          className="pb-4 text-xl text-center"
+                          style={{
+                            fontFamily: "'Playfair Display', serif",
+                            fontStyle: "italic",
+                          }}
+                        >
+                          Autorisation
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-blue-100">
+                      {invites.map(
+                        (invite) =>
+                          invite.chateau === true && (
+                            <tr key={invite.id}>
+                              <td
+                                className="py-6"
+                                style={{
+                                  fontFamily: "'Playfair Display', serif",
+                                }}
+                              >
+                                {invite.nom ?? "Invité"}
+                              </td>
+                              <td className="py-6 text-center">
+                                <div className="flex items-center justify-center gap-4">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <span
+                                      className="text-sm italic"
+                                      style={{
+                                        fontFamily: "'Playfair Display', serif",
+                                      }}
+                                    >
+                                      Oui
+                                    </span>
+                                    <input
+                                      type="radio"
+                                      checked={invite.autorisation_ia === true}
+                                      onChange={() =>
+                                        updateInvite(
+                                          invite.id,
+                                          "autorisation_ia",
+                                          true,
+                                        )
+                                      }
+                                      className="text-blue-500 h-4 w-4"
+                                    />
+                                  </label>
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <span
+                                      className="text-sm italic"
+                                      style={{
+                                        fontFamily: "'Playfair Display', serif",
+                                      }}
+                                    >
+                                      Non
+                                    </span>
+                                    <input
+                                      type="radio"
+                                      checked={invite.autorisation_ia === false}
+                                      onChange={() =>
+                                        updateInvite(
+                                          invite.id,
+                                          "autorisation_ia",
+                                          false,
+                                        )
+                                      }
+                                      className="text-blue-500 h-4 w-4"
+                                    />
+                                  </label>
+                                </div>
+                              </td>
+                            </tr>
+                          ),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Music Section */}
+          {invites.some((invite) => invite.chateau === true) && (
+            <section className="space-y-8 pb-12">
+              <div className="text-center">
+                <h3
+                  className="text-5xl text-[#557C55] mb-4 italic"
+                  style={{ fontFamily: "'Dancing Script', cursive" }}
+                >
+                  Vamos a bailar !
+                </h3>
+                <div className="flex justify-center items-center gap-4 text-[#557C55]">
+                  <span className="text-2xl">♪</span>
+                  <span className="text-3xl">🎵</span>
+                  <span className="text-2xl">♪</span>
+                </div>
+              </div>
+              <div className="bg-white/60 p-8 rounded-3xl border border-[#557C55]/20 shadow-inner">
+                <p
+                  className="text-sm tracking-widest font-semibold text-center mb-6 leading-relaxed uppercase"
+                  style={{ fontFamily: "'Montserrat', sans-serif" }}
+                >
+                  Parce-qu&apos;on aimerait danser avec vous, partage nous 2
+                  chansons qui vous feront danser
+                </p>
+                <textarea
+                  value={invitation.link_music ?? ""}
+                  onChange={(e) =>
+                    updateInvitation("link_music", e.target.value)
+                  }
+                  placeholder="Ex: Levitating - Dua Lipa, Bande Organisée - Jul..."
+                  rows={4}
+                  className="w-full bg-[#F9F6F0]/50 border-2 border-[#557C55]/10 rounded-2xl p-4 focus:ring-[#557C55] focus:border-[#557C55] placeholder:italic"
+                  style={{ fontFamily: "'Playfair Display', serif" }}
+                />
+              </div>
+              <div className="flex justify-center pt-8">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-[#557C55] text-white text-2xl px-12 py-4 rounded-full shadow-lg hover:bg-[#557C55]/90 transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer italic"
+                  style={{ fontFamily: "'Playfair Display', serif" }}
+                >
+                  {loading ? "Envoi en cours..." : "Envoyer ma réponse"}
+                </button>
+              </div>
+            </section>
+          )}
+
+          {!invites.some((invite) => invite.chateau === true) && (
+            <div className="flex justify-center pt-8 pb-12">
               <button
                 type="submit"
                 disabled={loading}
@@ -1379,7 +1609,7 @@ export default function Page({ params }: PageProps) {
                 {loading ? "Envoi en cours..." : "Envoyer ma réponse"}
               </button>
             </div>
-          </section>
+          )}
         </form>
 
         <footer className="text-center py-12 border-t border-[#557C55]/10 mt-12">
@@ -1395,11 +1625,7 @@ export default function Page({ params }: PageProps) {
           >
             Lina &amp; Dylan
           </p>
-          <img
-            src="/puppy.svg"
-            alt="Puppy"
-            className="w-16 h-16 mx-auto mt-6"
-          />
+          <img src="/alune.png" alt="Alune" className="w-48 mx-auto -mt-8" />
         </footer>
       </div>
 
